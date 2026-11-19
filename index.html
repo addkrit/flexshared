@@ -74,6 +74,7 @@
       <div id="list" class="row g-2"></div>
       <p id="list-empty" class="text-muted small hide">ยังไม่มีรายการ — วาง JSON แล้วกด "บันทึก"</p>
     </section>
+    <p id="diag" class="text-muted text-center mt-4 mb-0" style="font-size:11px"></p>
   </main>
 
   <!-- ตัวอย่าง Flex -->
@@ -100,13 +101,23 @@
     const $ = (id) => document.getElementById(id);
     const state = { items: [], editingId: null, canSend: false };
     const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1600, timerProgressBar: true });
+    const APP_VERSION = 'v2 · 19 พ.ย.';
+
+    // ข้อมูลไว้ดูตอนแก้ปัญหา (เวอร์ชันหน้า / ประเภทห้อง / เวอร์ชัน LINE)
+    function diag() {
+      let s = APP_VERSION + ' · ห้อง: ' + (state.ctxType || '-');
+      try { s += ' · LINE ' + (liff.getLineVersion() || '-') + ' · ' + liff.getOS(); } catch (e) { /* ก่อน init */ }
+      return s;
+    }
+    function errText(e) { return (e && e.code ? '[' + e.code + '] ' : '') + ((e && e.message) || String(e)); }
 
     // ---------- เริ่มต้น ----------
     function showStatus(html, spinner) {
       $('status').classList.remove('hide');
       $('app').classList.add('hide');
       $('status-box').innerHTML = (spinner ? '<div class="spinner-border text-success" role="status"></div>' : '') +
-        '<div class="mt-2">' + html + '</div>';
+        '<div class="mt-2">' + html + '</div>' +
+        '<div class="text-muted mt-4" style="font-size:11px">' + esc(diag()) + '</div>';
     }
 
     async function main() {
@@ -140,6 +151,7 @@
       $('btn-send').classList.toggle('hide', !state.canSend);
       $('status').classList.add('hide');
       $('app').classList.remove('hide');
+      $('diag').textContent = diag();
       updateSize();
       loadList();
     }
@@ -155,6 +167,7 @@
       $('btn-share').classList.toggle('hide', !liff.isApiAvailable('shareTargetPicker'));
       $('status').classList.add('hide');
       $('app').classList.remove('hide');
+      $('diag').textContent = diag();
       updateSize();
     }
 
@@ -246,7 +259,7 @@
         const r = await liff.shareTargetPicker([msg], { isMultiple: true });
         if (r) Toast.fire({ icon: 'success', title: 'ส่งข้อความสำเร็จ' });
       } catch (e) {
-        Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ', text: e.message || String(e) });
+        Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ', text: errText(e), footer: esc(diag()) });
       }
     }
 
@@ -256,7 +269,7 @@
         await Swal.fire({ icon: 'success', title: 'ส่งข้อความสำเร็จ', showConfirmButton: false, timer: 1200 });
         liff.closeWindow();
       } catch (e) {
-        Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ', text: e.message || String(e) });
+        Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ', text: errText(e), footer: esc(diag()) });
       }
     }
 
@@ -478,17 +491,17 @@
             menu(note('success', 'ส่งในห้องนี้แล้ว'));
             liff.closeWindow();
           } catch (e) {
-            menu(note('danger', 'ส่งไม่สำเร็จ: ' + (e.message || e)));
+            menu(note('danger', 'ส่งไม่สำเร็จ: ' + errText(e)));
           }
         };
         if (canPick) $('sh-pick').onclick = () => pick()
           .then((res) => menu(res ? note('success', 'ส่งข้อความสำเร็จ') : ''))
-          .catch((e) => menu(note('danger', 'แชร์ไม่สำเร็จ: ' + (e.message || e))));
+          .catch((e) => menu(note('danger', 'แชร์ไม่สำเร็จ: ' + errText(e))));
         $('sh-prev').onclick = () => preview(msg);
       };
       if (!state.canSend && canPick) {
         try { const res = await pick(); return menu(res ? note('success', 'ส่งข้อความสำเร็จ') : ''); }
-        catch (e) { return menu(note('danger', 'แชร์ไม่สำเร็จ: ' + (e.message || e))); }
+        catch (e) { return menu(note('danger', 'แชร์ไม่สำเร็จ: ' + errText(e))); }
       }
       menu();
     }
