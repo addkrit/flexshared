@@ -42,9 +42,10 @@
     <div class="card shadow-sm mb-3" id="editor-card">
       <div class="card-body">
         <div id="sendonly-note" class="alert alert-info small py-2 hide">
-          <b>เปิดจากโอเพ่นแชท</b> — LINE ไม่ส่งข้อมูลตัวตนในโอเพ่นแชท จึงบันทึก/ดูรายการที่นี่ไม่ได้<br>
-          • วาง JSON แล้วกด <b>ส่งในห้องนี้</b> ได้เลย หรือ<br>
-          • ส่ง <b>ลิงก์แชร์</b> ของ Flex ที่บันทึกไว้ (กด "คัดลอกลิงก์แชร์" จากแชทปกติ) มาในห้องนี้ แล้วกดลิงก์
+          <b>เปิดจากโอเพ่นแชท</b> — LINE ไม่อนุญาตให้แอปส่ง Flex ลงโอเพ่นแชท และไม่ให้ข้อมูลตัวตน (บันทึก/ดูรายการที่นี่ไม่ได้)<br>
+          • วาง JSON แล้วกด <b>แชร์ไปห้องของคุณเอง</b> เพื่อส่งให้เพื่อนหรือกลุ่ม<br>
+          • ปุ่ม <b>ส่งในแชทนี้</b> ลองได้ แต่ LINE มักไม่ยอมในโอเพ่นแชท<br>
+          • บันทึก/จัดการ Flex ให้เปิดลิงก์นี้จากแชทปกติ
         </div>
         <div id="editing-bar" class="alert alert-warning py-2 d-flex justify-content-between align-items-center hide">
           <span>กำลังแก้ไข: <b id="editing-name"></b></span>
@@ -101,7 +102,7 @@
     const $ = (id) => document.getElementById(id);
     const state = { items: [], editingId: null, canSend: false };
     const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1600, timerProgressBar: true });
-    const APP_VERSION = 'v2 · 19 พ.ย.';
+    const APP_VERSION = 'v3 · 19 พ.ย.';
 
     // ข้อมูลไว้ดูตอนแก้ปัญหา (เวอร์ชันหน้า / ประเภทห้อง / เวอร์ชัน LINE)
     function diag() {
@@ -134,13 +135,15 @@
       if (params.get('liff.state')) return; // LIFF กำลังพาไปหน้าปลายทาง
       const ctx = liff.getContext() || {};
       state.ctxType = ctx.type || '';
-      // ส่งลงห้องที่เปิดลิงก์ได้ (แชท 1:1, กลุ่ม, ห้อง และโอเพ่นแชท)
+      state.isOpenChat = ctx.type === 'square_chat';
+      // ปุ่ม "ส่งในแชทนี้" มีทุกห้อง — แต่ในโอเพ่นแชท LINE อาจตอบ "Not enough permission" (ทดสอบจริง 19 พ.ย.)
+      // จึงให้ "แชร์ไปห้องของคุณเอง" เป็นปุ่มหลักในโอเพ่นแชท
       state.canSend = liff.isInClient() && ['utou', 'group', 'room', 'square_chat'].includes(ctx.type);
       if (params.get('flex')) return shareMode(params.get('flex'));
       if (!liff.isLoggedIn()) return liff.login({ redirectUri: location.href });
       if (!liff.getIDToken()) {
-        // โอเพ่นแชท: LINE ไม่ให้ข้อมูลตัวตน → ส่ง Flex ได้ แต่บันทึก/ดูรายการไม่ได้
-        if (state.canSend) return sendOnlyMode();
+        // โอเพ่นแชท: ไม่มีข้อมูลตัวตน และส่งลงห้องไม่ได้ → แชร์ไปห้องของตัวเองได้อย่างเดียว
+        if (state.isOpenChat) return openChatMode();
         return showStatus('<b>LIFF ยังไม่ได้เปิดสิทธิ์ openid</b><br><small>LINE Developers > LIFF > Scopes: ติ๊ก openid, profile, chat_message.write</small>');
       }
       let name = '', pic = '';
@@ -156,15 +159,19 @@
       loadList();
     }
 
-    // เปิดจากโอเพ่นแชท (ไม่มี ID token): วาง JSON แล้วส่งลงห้องนี้ได้ แต่บันทึก/ดูรายการไม่ได้
-    function sendOnlyMode() {
+    // เปิดจากโอเพ่นแชท: LINE ไม่ให้ข้อมูลตัวตนและไม่ให้ส่งลงห้อง
+    // → วาง JSON แล้ว "แชร์ไปห้องของคุณเอง" (เพื่อน/กลุ่ม) ได้อย่างเดียว
+    function openChatMode() {
       state.sendOnly = true;
-      $('displayName').textContent = state.ctxType === 'square_chat' ? 'OpenChat' : '';
+      $('displayName').textContent = 'OpenChat';
       ['btn-save', 'btn-update', 'list-section', 'editing-bar'].forEach((id) => $(id).classList.add('hide'));
       $('sendonly-note').classList.remove('hide');
-      $('btn-send').classList.remove('hide');
-      $('btn-send').className = 'btn btn-success';
+      $('btn-share').textContent = 'แชร์ไปห้องของคุณเอง';
+      $('btn-share').className = 'btn btn-lg linebg';
       $('btn-share').classList.toggle('hide', !liff.isApiAvailable('shareTargetPicker'));
+      $('btn-send').textContent = 'ส่งในแชทนี้';
+      $('btn-send').className = 'btn btn-outline-success';
+      $('btn-share').after($('btn-send')); // ปุ่มหลักก่อน แล้วค่อยปุ่มส่งในแชทนี้
       $('status').classList.add('hide');
       $('app').classList.remove('hide');
       $('diag').textContent = diag();
@@ -269,7 +276,11 @@
         await Swal.fire({ icon: 'success', title: 'ส่งข้อความสำเร็จ', showConfirmButton: false, timer: 1200 });
         liff.closeWindow();
       } catch (e) {
-        Swal.fire({ icon: 'error', title: 'ส่งไม่สำเร็จ', text: errText(e), footer: esc(diag()) });
+        Swal.fire({
+          icon: 'error', title: 'ส่งไม่สำเร็จ',
+          text: (state.isOpenChat ? 'LINE ไม่อนุญาตให้ส่งลงโอเพ่นแชท — ใช้ปุ่ม "แชร์ไปห้องของคุณเอง" แทน · ' : '') + errText(e),
+          footer: esc(diag()),
+        });
       }
     }
 
@@ -459,7 +470,8 @@
     });
 
     // ---------- โหมดแชร์ (เปิดจากลิงก์ ?flex=ID) ----------
-    // ในห้องแชท (รวมโอเพ่นแชท): ปุ่ม "ส่งในห้องนี้" + "เลือกห้องอื่น"
+    // แชท 1:1/กลุ่ม: ปุ่มหลัก "ส่งในแชทนี้" + "เลือกห้องอื่น"
+    // โอเพ่นแชท: ปุ่มหลัก "แชร์ไปห้องของคุณเอง" + ปุ่มรอง "ส่งในแชทนี้" (LINE มักไม่ยอม)
     // นอกห้องแชท: เปิดหน้าเลือกห้องให้ทันที (เหมือนเดิม)
     async function shareMode(id) {
       showStatus('กำลังเปิด Flex ที่แชร์...', true);
@@ -477,21 +489,27 @@
         if (res && liff.isInClient()) liff.closeWindow();
         return res;
       };
+      const oc = state.isOpenChat;
       const menu = (top) => {
+        const sendBtn = state.canSend
+          ? '<button class="btn ' + (oc ? 'btn-outline-success' : 'btn-lg linebg') + ' w-100 mb-2" id="sh-send">ส่งในแชทนี้</button>' : '';
+        const pickBtn = canPick
+          ? '<button class="btn ' + (oc || !state.canSend ? 'btn-lg linebg' : 'btn-outline-success') + ' w-100 mb-2" id="sh-pick">' +
+            (oc ? 'แชร์ไปห้องของคุณเอง' : (state.canSend ? 'เลือกห้องอื่น' : 'แชร์ไปห้องแชท')) + '</button>' : '';
         showStatus((top || '') +
+          (oc ? note('info', 'โอเพ่นแชท: LINE มักไม่ยอมให้ส่ง Flex ลงห้องโดยตรง — กด "แชร์ไปห้องของคุณเอง" เพื่อส่งให้เพื่อนหรือกลุ่ม') : '') +
           '<div class="fw-bold mb-3">' + esc(msg.altText || 'Flex Message') + '</div>' +
-          (state.canSend ? '<button class="btn btn-lg linebg w-100 mb-2" id="sh-send">ส่งในห้องนี้</button>' : '') +
-          (canPick ? '<button class="btn btn-outline-success w-100 mb-2" id="sh-pick">' + (state.canSend ? 'เลือกห้องอื่น' : 'แชร์ไปห้องแชท') + '</button>' : '') +
+          (oc ? pickBtn + sendBtn : sendBtn + pickBtn) +
           (!state.canSend && !canPick ? note('warning', 'เปิดลิงก์นี้ในแอป LINE เพื่อส่ง Flex') : '') +
           '<button class="btn btn-outline-info w-100" id="sh-prev">ดูตัวอย่าง</button>');
         if (state.canSend) $('sh-send').onclick = async () => {
           $('sh-send').disabled = true;
           try {
             await liff.sendMessages([msg]);
-            menu(note('success', 'ส่งในห้องนี้แล้ว'));
+            menu(note('success', 'ส่งในแชทนี้แล้ว'));
             liff.closeWindow();
           } catch (e) {
-            menu(note('danger', 'ส่งไม่สำเร็จ: ' + errText(e)));
+            menu(note('danger', (oc ? 'LINE ไม่อนุญาตให้ส่งลงโอเพ่นแชท — ใช้ "แชร์ไปห้องของคุณเอง" แทน · ' : 'ส่งไม่สำเร็จ: ') + errText(e)));
           }
         };
         if (canPick) $('sh-pick').onclick = () => pick()
