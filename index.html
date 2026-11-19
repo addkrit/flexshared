@@ -19,6 +19,7 @@
     #previewFrame { width: 100%; height: 70vh; border: 0; background: #849ebf; }
     .editing { border: 2px solid #ffc107 !important; }
     #status { min-height: 60vh; }
+    #status-box { width: 100%; max-width: 420px; }
   </style>
 </head>
 
@@ -40,6 +41,11 @@
 
     <div class="card shadow-sm mb-3" id="editor-card">
       <div class="card-body">
+        <div id="sendonly-note" class="alert alert-info small py-2 hide">
+          <b>เปิดจากโอเพ่นแชท</b> — LINE ไม่ส่งข้อมูลตัวตนในโอเพ่นแชท จึงบันทึก/ดูรายการที่นี่ไม่ได้<br>
+          • วาง JSON แล้วกด <b>ส่งในห้องนี้</b> ได้เลย หรือ<br>
+          • ส่ง <b>ลิงก์แชร์</b> ของ Flex ที่บันทึกไว้ (กด "คัดลอกลิงก์แชร์" จากแชทปกติ) มาในห้องนี้ แล้วกดลิงก์
+        </div>
         <div id="editing-bar" class="alert alert-warning py-2 d-flex justify-content-between align-items-center hide">
           <span>กำลังแก้ไข: <b id="editing-name"></b></span>
           <button class="btn btn-sm btn-outline-dark" id="btn-new">สร้างใหม่</button>
@@ -60,12 +66,14 @@
       </div>
     </div>
 
-    <div class="d-flex justify-content-between align-items-center mb-2">
-      <h6 class="mb-0">Flex ที่บันทึกไว้ <span id="count" class="badge bg-secondary"></span></h6>
-      <button class="btn btn-sm btn-outline-secondary" id="btn-reload">โหลดใหม่</button>
-    </div>
-    <div id="list" class="row g-2"></div>
-    <p id="list-empty" class="text-muted small hide">ยังไม่มีรายการ — วาง JSON แล้วกด "บันทึก"</p>
+    <section id="list-section">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">Flex ที่บันทึกไว้ <span id="count" class="badge bg-secondary"></span></h6>
+        <button class="btn btn-sm btn-outline-secondary" id="btn-reload">โหลดใหม่</button>
+      </div>
+      <div id="list" class="row g-2"></div>
+      <p id="list-empty" class="text-muted small hide">ยังไม่มีรายการ — วาง JSON แล้วกด "บันทึก"</p>
+    </section>
   </main>
 
   <!-- ตัวอย่าง Flex -->
@@ -113,9 +121,15 @@
       }
       const params = new URLSearchParams(location.search);
       if (params.get('liff.state')) return; // LIFF กำลังพาไปหน้าปลายทาง
+      const ctx = liff.getContext() || {};
+      state.ctxType = ctx.type || '';
+      // ส่งลงห้องที่เปิดลิงก์ได้ (แชท 1:1, กลุ่ม, ห้อง และโอเพ่นแชท)
+      state.canSend = liff.isInClient() && ['utou', 'group', 'room', 'square_chat'].includes(ctx.type);
       if (params.get('flex')) return shareMode(params.get('flex'));
       if (!liff.isLoggedIn()) return liff.login({ redirectUri: location.href });
       if (!liff.getIDToken()) {
+        // โอเพ่นแชท: LINE ไม่ให้ข้อมูลตัวตน → ส่ง Flex ได้ แต่บันทึก/ดูรายการไม่ได้
+        if (state.canSend) return sendOnlyMode();
         return showStatus('<b>LIFF ยังไม่ได้เปิดสิทธิ์ openid</b><br><small>LINE Developers > LIFF > Scopes: ติ๊ก openid, profile, chat_message.write</small>');
       }
       let name = '', pic = '';
@@ -123,13 +137,25 @@
       catch (e) { const d = liff.getDecodedIDToken() || {}; name = d.name || 'ผู้ใช้'; pic = d.picture || ''; }
       $('displayName').textContent = name;
       if (pic) { $('avatar').src = pic; $('avatar').classList.remove('hide'); }
-      const ctx = liff.getContext() || {};
-      state.canSend = liff.isInClient() && ['utou', 'group', 'room', 'square_chat'].includes(ctx.type);
       $('btn-send').classList.toggle('hide', !state.canSend);
       $('status').classList.add('hide');
       $('app').classList.remove('hide');
       updateSize();
       loadList();
+    }
+
+    // เปิดจากโอเพ่นแชท (ไม่มี ID token): วาง JSON แล้วส่งลงห้องนี้ได้ แต่บันทึก/ดูรายการไม่ได้
+    function sendOnlyMode() {
+      state.sendOnly = true;
+      $('displayName').textContent = state.ctxType === 'square_chat' ? 'OpenChat' : '';
+      ['btn-save', 'btn-update', 'list-section', 'editing-bar'].forEach((id) => $(id).classList.add('hide'));
+      $('sendonly-note').classList.remove('hide');
+      $('btn-send').classList.remove('hide');
+      $('btn-send').className = 'btn btn-success';
+      $('btn-share').classList.toggle('hide', !liff.isApiAvailable('shareTargetPicker'));
+      $('status').classList.add('hide');
+      $('app').classList.remove('hide');
+      updateSize();
     }
 
     // ---------- เรียก Apps Script ----------
@@ -420,26 +446,51 @@
     });
 
     // ---------- โหมดแชร์ (เปิดจากลิงก์ ?flex=ID) ----------
+    // ในห้องแชท (รวมโอเพ่นแชท): ปุ่ม "ส่งในห้องนี้" + "เลือกห้องอื่น"
+    // นอกห้องแชท: เปิดหน้าเลือกห้องให้ทันที (เหมือนเดิม)
     async function shareMode(id) {
       showStatus('กำลังเปิด Flex ที่แชร์...', true);
+      let msg;
       try {
         const r = await api('one', { id }, false);
-        const msg = JSON.parse(r.data.flex);
-        const go = async () => {
-          if (!liff.isApiAvailable('shareTargetPicker')) throw new Error('LINE เวอร์ชันนี้แชร์ไม่ได้');
-          const res = await liff.shareTargetPicker([msg], { isMultiple: true });
-          if (res && liff.isInClient()) return liff.closeWindow();
-          showStatus((res ? '<b>ส่งข้อความสำเร็จ</b><br>' : '') +
-            '<button class="btn linebg mt-2" id="again">แชร์อีกครั้ง</button>');
-          $('again').onclick = () => go().catch((e) => showStatus('แชร์ไม่สำเร็จ: ' + esc(e.message)));
-        };
-        await go().catch((e) => {
-          showStatus('<b>แชร์ไม่สำเร็จ</b><br><small>' + esc(e.message || e) + '</small><br><button class="btn linebg mt-2" id="again">ลองอีกครั้ง</button>');
-          $('again').onclick = () => go().catch((err) => showStatus('แชร์ไม่สำเร็จ: ' + esc(err.message)));
-        });
+        msg = JSON.parse(r.data.flex);
       } catch (e) {
-        showStatus('<b>เปิด Flex ที่แชร์ไม่สำเร็จ</b><br><small>' + esc(e.message || e) + '</small>');
+        return showStatus('<b>เปิด Flex ที่แชร์ไม่สำเร็จ</b><br><small>' + esc(e.message || e) + '</small>');
       }
+      const canPick = liff.isApiAvailable('shareTargetPicker');
+      const note = (cls, text) => '<div class="alert alert-' + cls + ' small py-2">' + esc(text) + '</div>';
+      const pick = async () => {
+        const res = await liff.shareTargetPicker([msg], { isMultiple: true });
+        if (res && liff.isInClient()) liff.closeWindow();
+        return res;
+      };
+      const menu = (top) => {
+        showStatus((top || '') +
+          '<div class="fw-bold mb-3">' + esc(msg.altText || 'Flex Message') + '</div>' +
+          (state.canSend ? '<button class="btn btn-lg linebg w-100 mb-2" id="sh-send">ส่งในห้องนี้</button>' : '') +
+          (canPick ? '<button class="btn btn-outline-success w-100 mb-2" id="sh-pick">' + (state.canSend ? 'เลือกห้องอื่น' : 'แชร์ไปห้องแชท') + '</button>' : '') +
+          (!state.canSend && !canPick ? note('warning', 'เปิดลิงก์นี้ในแอป LINE เพื่อส่ง Flex') : '') +
+          '<button class="btn btn-outline-info w-100" id="sh-prev">ดูตัวอย่าง</button>');
+        if (state.canSend) $('sh-send').onclick = async () => {
+          $('sh-send').disabled = true;
+          try {
+            await liff.sendMessages([msg]);
+            menu(note('success', 'ส่งในห้องนี้แล้ว'));
+            liff.closeWindow();
+          } catch (e) {
+            menu(note('danger', 'ส่งไม่สำเร็จ: ' + (e.message || e)));
+          }
+        };
+        if (canPick) $('sh-pick').onclick = () => pick()
+          .then((res) => menu(res ? note('success', 'ส่งข้อความสำเร็จ') : ''))
+          .catch((e) => menu(note('danger', 'แชร์ไม่สำเร็จ: ' + (e.message || e))));
+        $('sh-prev').onclick = () => preview(msg);
+      };
+      if (!state.canSend && canPick) {
+        try { const res = await pick(); return menu(res ? note('success', 'ส่งข้อความสำเร็จ') : ''); }
+        catch (e) { return menu(note('danger', 'แชร์ไม่สำเร็จ: ' + (e.message || e))); }
+      }
+      menu();
     }
 
     main();

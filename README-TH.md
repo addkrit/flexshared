@@ -6,6 +6,19 @@
 เราแก้เว็บของเขาไม่ได้ (เป็น GitHub ของคนอื่น อัปเดตล่าสุดปี 2022) และ Flex ที่เคยบันทึกไว้ในนั้นเรียกกลับมาไม่ได้
 ทางแก้คือใช้ชุดนี้ ซึ่งเก็บข้อมูลใน **Google Sheet ของคุณเอง**
 
+## ✅ ติดตั้งแล้ว (18 พ.ย. 2026) — ค่าที่ใช้อยู่จริง
+| ส่วน | ค่า |
+|---|---|
+| **ลิงก์ใช้งาน (ส่งในแชท LINE แล้วกด)** | https://liff.line.me/2012675889-dcyNM9eN |
+| หน้าเว็บ (GitHub Pages) | https://addkrit.github.io/flexshared/ — repo `addkrit/flexshared` (บัญชี GitHub addkrit) |
+| LINE | Provider **Digital** > ช่อง LINE Login **Flex Shared** (Channel ID 2012675889, สถานะ **Published** — ทุกคนใช้ได้) > LIFF `2012675889-dcyNM9eN` (Full, openid/profile/chat_message.write, shareTargetPicker เปิด) |
+| ที่เก็บข้อมูล | Google Sheet **Flex Shared DB** (บัญชี goimage55) แท็บ `flex` |
+| Apps Script | โปรเจกต์ **Flex Shared Backend** (บัญชี goimage55) — https://script.google.com/home/projects/1e5G72_IJnnWhUWeyES_KNLaGa8KcoMirVBVNC6M1YqLwgpcjjdhsz9lH/edit |
+| SCRIPT_URL (เว็บแอป, เวอร์ชัน 1) | https://script.google.com/macros/s/AKfycbzRMNL9JzLrx4D4i_cRHd2qDmvMp3bEHRZjsT3wWidA0uCRaQ3BvHjaPxQbRGJ1Ig_Q/exec |
+
+- ช่อง Publish แล้ว (18 พ.ย.) — คนนอกกด "ลิงก์แชร์ต่อ" ได้ (ย้อนกลับเป็น Developing ไม่ได้ ต้องลบช่องแล้วสร้างใหม่เท่านั้น)
+- Chrome ล็อกอิน Google หลายบัญชี → ปุ่ม/หน้าต่างอนุญาตของ Apps Script จะไปลงบัญชีแรก (milzaza123) ถ้าต้องแก้สคริปต์ ให้ทำในหน้าต่างไม่ระบุตัวตนที่ล็อกอิน goimage55 บัญชีเดียว
+
 ## ไฟล์ในโฟลเดอร์นี้
 | ไฟล์ | ใช้ทำอะไร |
 |---|---|
