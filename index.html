@@ -102,7 +102,7 @@
     const $ = (id) => document.getElementById(id);
     const state = { items: [], editingId: null, canSend: false };
     const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 1600, timerProgressBar: true });
-    const APP_VERSION = 'v3 · 19 พ.ย.';
+    const APP_VERSION = 'v4 · 25 พ.ย.';
 
     // ข้อมูลไว้ดูตอนแก้ปัญหา (เวอร์ชันหน้า / ประเภทห้อง / เวอร์ชัน LINE)
     function diag() {
@@ -140,6 +140,7 @@
       // จึงให้ "แชร์ไปห้องของคุณเอง" เป็นปุ่มหลักในโอเพ่นแชท
       state.canSend = liff.isInClient() && ['utou', 'group', 'room', 'square_chat'].includes(ctx.type);
       if (params.get('flex')) return shareMode(params.get('flex'));
+      if (params.get('cafe')) return cafeMode(params.get('cafe'));
       if (!liff.isLoggedIn()) return liff.login({ redirectUri: location.href });
       if (!liff.getIDToken()) {
         // โอเพ่นแชท: ไม่มีข้อมูลตัวตน และส่งลงห้องไม่ได้ → แชร์ไปห้องของตัวเองได้อย่างเดียว
@@ -522,6 +523,72 @@
         catch (e) { return menu(note('danger', 'แชร์ไม่สำเร็จ: ' + errText(e))); }
       }
       menu();
+    }
+
+    // ---------- โหมดแชร์การ์ดคาเฟ่ (ปุ่ม "แชร์" ในบอท: ?cafe=รหัสร้าน) ----------
+    // ข้อมูลร้านอยู่ใน cafe-data.json (สร้างด้วย line-flex-bot/cafes/make_all.py) — การ์ดต้องหน้าตาเดียวกับ cafeBubble_ ในบอท
+    const CAFE_BOT_ASK = 'https://line.me/R/oaMessage/%40642brlzk/?' + encodeURIComponent('คาเฟ่ที่ไหนน่านั่ง');
+
+    function cafeBubble(c) {
+      const review = 'https://www.wongnai.com/r/' + c.id;
+      const map = 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lng;
+      const t = (text, extra) => Object.assign({ type: 'text', text, wrap: true }, extra || {});
+      const btn = (label, uri, style, color) => Object.assign({ type: 'button', style: style || 'secondary', height: 'sm',
+        action: { type: 'uri', label, uri } }, color ? { color } : {});
+      const body = [
+        t('#' + c.n + '  ' + c.name, { weight: 'bold', size: 'md', maxLines: 2 }),
+        { type: 'box', layout: 'baseline', spacing: 'sm', contents: [
+          { type: 'text', text: '★ ' + Number(c.r).toFixed(2), color: '#E8590C', weight: 'bold', size: 'sm', flex: 0 },
+          { type: 'text', text: Number(c.rv).toLocaleString('en-US') + ' รีวิว · ' + Number(c.ph).toLocaleString('en-US') + ' รูป', size: 'xs', color: '#888888', flex: 0, margin: 'sm' }] },
+        t(c.meta || 'คาเฟ่', { size: 'xs', color: '#555555', maxLines: 2 }),
+      ];
+      if (c.fav) body.push(t('🍰 เมนูเด่น: ' + c.fav, { size: 'xs', color: '#6D4C41', maxLines: 2 }));
+      if (c.hours) body.push(t('🕒 ' + c.hours, { size: 'xs', color: '#333333', maxLines: 2 }));
+      body.push(t('📍 ' + [c.loc, c.city].filter(Boolean).join(' · '), { size: 'xs', color: '#888888', maxLines: 2 }));
+      return {
+        type: 'bubble', size: 'kilo',
+        hero: { type: 'image', url: c.img, size: 'full', aspectRatio: '4:3', aspectMode: 'cover', action: { type: 'uri', uri: review } },
+        body: { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '12px', contents: body },
+        footer: { type: 'box', layout: 'vertical', spacing: 'xs', paddingAll: '10px', contents: [
+          btn('📍 แผนที่ / นำทาง', map, 'primary', '#8D6E63'),
+          { type: 'box', layout: 'horizontal', spacing: 'xs', contents: [
+            btn('⭐ รีวิว', review), btn('🔗 แชร์', 'https://liff.line.me/' + CFG.LIFF_ID + '?cafe=' + encodeURIComponent(c.id))] },
+          btn('☕ ดูคาเฟ่น่านั่งเพิ่ม', CAFE_BOT_ASK, 'link'),
+        ] },
+      };
+    }
+
+    async function cafeMode(id) {
+      showStatus('กำลังเตรียมการ์ดร้าน...', true);
+      let c;
+      try {
+        const res = await fetch('cafe-data.json', { cache: 'no-cache' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        c = (await res.json()).cafes.find((x) => x.id === id);
+      } catch (e) {
+        return showStatus('<b>โหลดข้อมูลร้านไม่สำเร็จ</b><br><small>' + esc(errText(e)) + '</small>');
+      }
+      if (!c) return showStatus('<b>ไม่พบร้านนี้</b><br><small>อาจถูกนำออกจากรายการแล้ว</small><br><a class="btn btn-outline-success mt-3" href="' + CAFE_BOT_ASK + '">☕ ดูคาเฟ่น่านั่ง</a>');
+      const msg = { type: 'flex', altText: ('☕ ' + c.name + ' (' + c.city + ') คาเฟ่น่านั่ง').slice(0, 400), contents: cafeBubble(c) };
+      const canPick = liff.isApiAvailable('shareTargetPicker');
+      const note = (cls, text) => '<div class="alert alert-' + cls + ' small py-2">' + esc(text) + '</div>';
+      const menu = (top) => {
+        showStatus((top || '') + '<div class="fw-bold mb-3">☕ ' + esc(c.name) + '<br><small class="text-muted">' + esc(c.city) + '</small></div>' +
+          (canPick ? '<button class="btn btn-lg linebg w-100 mb-2" id="cf-pick">แชร์ให้เพื่อน / กลุ่ม</button>'
+            : note('warning', 'เปิดลิงก์นี้ในแอป LINE เพื่อแชร์การ์ด')) +
+          '<button class="btn btn-outline-info w-100 mb-2" id="cf-prev">ดูตัวอย่างการ์ด</button>' +
+          '<a class="btn btn-outline-secondary w-100" href="' + CAFE_BOT_ASK + '">☕ ดูคาเฟ่น่านั่งเพิ่ม</a>');
+        if (canPick) $('cf-pick').onclick = () => pick().catch((e) => menu(note('danger', 'แชร์ไม่สำเร็จ: ' + errText(e))));
+        $('cf-prev').onclick = () => preview(msg);
+      };
+      const pick = async () => {
+        const r = await liff.shareTargetPicker([msg], { isMultiple: true });
+        menu(r ? note('success', 'ส่งการ์ดแล้ว') : '');
+        if (r && liff.isInClient()) liff.closeWindow();
+      };
+      if (canPick) {
+        try { await pick(); } catch (e) { menu(note('danger', 'แชร์ไม่สำเร็จ: ' + errText(e))); }
+      } else menu('');
     }
 
     main();
